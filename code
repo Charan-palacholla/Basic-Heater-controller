@@ -1,0 +1,129 @@
+#include <LiquidCrystal.h>
+
+// Pin definitions
+#define BUTTON_INC_PIN 3       // Pushbutton to increase threshold
+#define BUTTON_DEC_PIN 6       // Pushbutton to decrease threshold
+#define BUTTON_START_PIN 13    // Pushbutton to start heating
+#define HEATER_LED_PIN 4       // Heater indicator LED
+#define BUZZER_PIN 5           // Buzzer for overheat alert
+
+LiquidCrystal lcd(12, 11, 10, 9, 8, 7);
+
+int threshold = 20;            // Initial threshold 20°C
+bool heatingStarted = false;
+
+unsigned long lastIncPress = 0;
+unsigned long lastDecPress = 0;
+unsigned long lastStartPress = 0;
+const int debounceDelay = 300;
+
+// Variables for mock temperature simulation
+float mockTemp = 15.0;         // Starting temperature
+bool buzzerOn = false;
+unsigned long buzzerStartTime = 0;
+
+void setup() {
+  lcd.begin(16, 2);
+
+  pinMode(BUTTON_INC_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_DEC_PIN, INPUT_PULLUP);
+  pinMode(BUTTON_START_PIN, INPUT_PULLUP);
+
+  pinMode(HEATER_LED_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  digitalWrite(HEATER_LED_PIN, LOW);
+  digitalWrite(BUZZER_PIN, LOW);
+
+  Serial.begin(9600);
+
+  lcd.setCursor(0, 0);
+  lcd.print("Set Threshold:");
+  lcd.setCursor(0, 1);
+  lcd.print(threshold);
+  lcd.print(" C          ");
+
+  Serial.println("System Ready. Adjust threshold with buttons. Press Start to heat.");
+}
+
+void loop() {
+  // Adjust threshold using buttons before heating starts
+  if (!heatingStarted) {
+    if (digitalRead(BUTTON_INC_PIN) == LOW && (millis() - lastIncPress > debounceDelay)) {
+      threshold++;
+      if (threshold > 100) threshold = 100;
+      lastIncPress = millis();
+    }
+
+    if (digitalRead(BUTTON_DEC_PIN) == LOW && (millis() - lastDecPress > debounceDelay)) {
+      threshold--;
+      if (threshold < 20) threshold = 20;
+      lastDecPress = millis();
+    }
+
+    // Display updated threshold
+    lcd.setCursor(0, 1);
+    lcd.print("                "); // Clear line
+    lcd.setCursor(0, 1);
+    lcd.print(threshold);
+    lcd.print(" C          ");
+
+    Serial.print("Threshold set to: ");
+    Serial.println(threshold);
+
+    // Check for start heating command
+    if (digitalRead(BUTTON_START_PIN) == LOW && (millis() - lastStartPress > debounceDelay)) {
+      heatingStarted = true;
+      lastStartPress = millis();
+      Serial.println("Heating Started!");
+      lcd.clear();
+    }
+  } else {
+    // Simulate temperature rising
+    mockTemp += 0.2;
+    if (mockTemp > 120) mockTemp = 15;
+
+    float currentTemp = mockTemp;
+
+    Serial.print("Current Temp: ");
+    Serial.print(currentTemp);
+    Serial.print(" C, Threshold: ");
+    Serial.println(threshold);
+
+    lcd.setCursor(0, 0);
+    lcd.print("Temp:");
+    lcd.print(currentTemp, 1);
+    lcd.print(" C     ");
+    lcd.setCursor(0, 1);
+    lcd.print("Thresh:");
+    lcd.print(threshold);
+    lcd.print(" C     ");
+
+    if (!buzzerOn) {
+      if (currentTemp < threshold) {
+        digitalWrite(HEATER_LED_PIN, HIGH);
+        digitalWrite(BUZZER_PIN, LOW);
+      } else {
+        // Threshold reached: turn buzzer on and record time
+        digitalWrite(BUZZER_PIN, HIGH);
+        buzzerStartTime = millis();
+        buzzerOn = true;
+        Serial.println("Target reached! Buzzer ON");
+      }
+    } else {
+      // Buzzer has been turned on; check how long it's been on
+      if (millis() - buzzerStartTime >= 2000) { // 2 seconds
+        digitalWrite(BUZZER_PIN, LOW);
+        digitalWrite(HEATER_LED_PIN, LOW); // Turn off heater after 2 seconds
+        heatingStarted = false; // Optionally reset heating state to require restart
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("Heating Stopped");
+        Serial.println("Heating stopped after buzzer.");
+        buzzerOn = false; // Reset buzzer flag
+      }
+    }
+  }
+
+  delay(200);
+}
